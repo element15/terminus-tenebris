@@ -49,31 +49,6 @@ class us_central(datetime.tzinfo):
         return last_sunday > 0 # First Sunday or later
 central_time = us_central()
     
-def get_day_minute(dt):
-    return sum((
-        dt.hour*60.0,
-        dt.minute,
-        dt.second/60.0,
-        dt.microsecond/60e6))
-
-def sexagesimalize(julian=None, days=0.0, hours=0.0, minutes=0.0, seconds=0.0):
-    """Convert a decimal time representation to an hour/minuts/second tuple.
-
-    If the specified time exceeds a day, the days portion is truncated.
-    """
-    # Handle julian dates starting at noon.
-    if julian is not None:
-        days += julian - 0.5
-    # Start by converting everything to seconds
-    total_seconds = sum(
-        (seconds, minutes*60.0, hours*3600.0, days*86_400.0)) % 86_400
-    hours = total_seconds // 3600
-    total_seconds %= 3600
-    minutes = total_seconds // 60
-    total_seconds %= 60
-    seconds = total_seconds
-    return hours, minutes, seconds
-    
 def wikipedia_formula(latitude_deg, longitude_deg, dt):
     """Calculate sunrise/sunset parameters.
 
