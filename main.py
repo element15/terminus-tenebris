@@ -4,10 +4,10 @@
 import datetime
 from math import (
     sin, cos, tan,
-    asin, acos, atan,
+    asin, acos, atan, atan2,
     radians, degrees)
 
-# Number of leap seconds since 2000-01-01
+# Number of leap seconds since 2000-01-01 as of 2021-01-01
 LEAP_SECONDS = datetime.timedelta(seconds=5)
 TIME_EPOCH = datetime.datetime(
     2000, 1, 1, hour=12, tzinfo=datetime.timezone.utc)
@@ -17,15 +17,11 @@ DST_OFFSET = datetime.timedelta(hours=1)
 ZERO_OFFSET = datetime.timedelta(0)
 
 deg_func = lambda f : lambda x : f(radians(x))
-# sind = deg_func(sin)
-# cosd = deg_func(cos)
-# tand = deg_func(tan)
 sind, cosd, tand = map(deg_func, (sin, cos, tan))
+
 deg_afunc = lambda f : lambda x : degrees(f(x))
-# asind = deg_afunc(asin)
-# acosd = deg_afunc(acos)
-# atand = deg_afunc(atan)
 asind, acosd, atand = map(deg_afunc, (asin, acos, atan))
+atan2d = lambda x, y : degrees(atan2(x, y))
 
 class us_central(datetime.tzinfo):
     def utcoffset(self, dt):
@@ -51,63 +47,85 @@ class us_central(datetime.tzinfo):
             return last_sunday > 7 # Second Sunday or later
         # DST ends in November
         return last_sunday > 0 # First Sunday or later
-
+central_time = us_central()
+    
 def get_day_minute(dt):
     return sum((
         dt.hour*60.0,
         dt.minute,
         dt.second/60.0,
         dt.microsecond/60e6))
+
+def sexagesimalize(julian=None, days=0.0, hours=0.0, minutes=0.0, seconds=0.0):
+    """Convert a decimal time representation to an hour/minuts/second tuple.
+
+    If the specified time exceeds a day, the days portion is truncated.
+    """
+    # Handle julian dates starting at noon.
+    if julian is not None:
+        days += julian - 0.5
+    # Start by converting everything to seconds
+    total_seconds = sum(
+        (seconds, minutes*60.0, hours*3600.0, days*86_400.0)) % 86_400
+    hours = total_seconds // 3600
+    total_seconds %= 3600
+    minutes = total_seconds // 60
+    total_seconds %= 60
+    seconds = total_seconds
+    return hours, minutes, seconds
     
-def solar_elevation(latitude_deg, longitude_deg, dt):
-    millenium_day = (dt-TIME_EPOCH+LEAP_SECONDS).total_seconds() / 86400.0
-    local_time_min = get_day_minute(dt)
-    tz_hours = dt.tzinfo.utcoffset(dt).total_seconds() / 3600.0
-    julian_century = millenium_day / 36525.0 # G
-    geom_mean_sun_lon_deg = ( # I
-        280.466_460 + julian_century*(
-            36_000.769_830 + julian_century*303.2e-6)) % 360
-    geom_mean_sun_anom_deg = 357.529_110 + julian_century*( # J
-        35_999.050_290 - 153.7e-6*julian_century)
-    earth_orbit_ecc = 16.708_634e-3 - julian_century*( # K
-        42.037e-6 + 126.7e-9*julian_century)
-    sun_eq_center = ( # L
-        sind(geom_mean_sun_anom_deg) * (
-            1.914602 - julian_century * (4.817e-3 + 14e-6*julian_century))
-        + sind(3*geom_mean_sun_anom_deg) * (19.993e-3 - 101e-6*julian_century)
-        + sind(3*geom_mean_sun_anom_deg) * 289e-6)
-    sun_true_lon_deg = geom_mean_sun_lon_deg - sun_eq_center # M
-    sun_apparent_lon_deg = sun_true_lon_deg - 5.69e-3 - 4.78e-3*sind( # P
-        125.04 - 1924.136 * julian_century)
-    mean_ecliptic_obliquity_deg = 23+(26+( # Q
-        21.448 - julian_century*(
-            46.815 + julian_century*(
-                590e-6 - julian_century*1.813e-3)))/60)/60
-    obliquity_correction_deg = mean_ecliptic_obliquity_deg + 2.56e-3*cosd( # R
-        125.04 - 1934.136*julian_century)
-    sun_declination_deg = asind( # T
-        sind(obliquity_correction_deg)*sind(sun_apparent_lon_deg))
-    var_y = tand(obliquity_correction_deg/2)**2 # U
-    eq_of_time_min = 4 * ( # V
-        var_y*sind(2*geom_mean_sun_lon_deg)
-        - 2*earth_orbit_ecc*sind(geom_mean_sun_anom_deg)
-        + (
-            4*earth_orbit_ecc*var_y
-            *sind(geom_mean_sun_anom_deg)*cosd(2*geom_mean_sun_lon_deg))
-        - 0.5*var_y**2*sind(4*geom_mean_sun_lon_deg)
-        - 1.25*earth_orbit_ecc**2*sind(2*geom_mean_sun_anom_deg))
-    true_solar_time_min = ( # AB
-        local_time_min + eq_of_time_min + 4*longitude_deg - 60*tz_hours)%1440
-    hour_angle_deg = true_solar_time_min/4 - 180 # AC
-    solar_zenith_angle_deg = acosd( # AD
-        sind(latitude_deg) * sind(sun_declination_deg) +
-        cosd(latitude_deg) * cosd(sun_declination_deg) * cosd(hour_angle_deg))
-    solar_elevation_angle_deg = 90 - solar_zenith_angle_deg # AE
-    return solar_elevation_angle_deg
+def wikipedia_formula(latitude_deg, longitude_deg, dt):
+    """Calculate sunrise/sunset parameters.
+
+    These equations were adapted from Wikipedia:
+    https://en.wikipedia.org/wiki/Sunrise_equation
+    """
+    # Julian date relative to 2000-01-01T12:00:00Z (days)
+    n = (dt-TIME_EPOCH+LEAP_SECONDS).total_seconds() / 86400.0
+    # Mean solar anomaly (degrees)
+    M = (357.5291 + 985.600_280e-3*n) % 360
+    # Equation of the center (degrees)
+    C = 1.9148*sind(M) + 20e-3*sind(2*M) + 300e-6*sind(3*M)
+    # Ecliptic longitude (degrees)
+    lam = sum((M, C, 180.0, 102.9372)) % 360
+    # Equation of time (days)
+    eq_of_time_day = - 5.3e-3*sind(M) + 6.9e-3*sind(2*lam)
+    # Declination of the sun (degrees)
+    delta = asind(sind(lam)*sind(23.44))
+
+    # Hour angle of the sun at the specified position above the horizon
+    # given in hours either side of solar noon
+    omega = lambda theta : acosd(
+        (sind(theta) - sind(latitude_deg)*sind(delta))
+        /(cosd(latitude_deg)*cosd(delta))) / 15.0
+    sunset_deg = -0.83
+    civil_twilight_deg = -6.0
+    
+    # Solar noon
+    n_transit = int(n) - longitude_deg/360.0 - eq_of_time_day
+    dt_transit = (
+        TIME_EPOCH-LEAP_SECONDS
+        + datetime.timedelta(days=n_transit)).astimezone(dt.tzinfo)
+
+    out = {'noon': dt_transit}
+    # Excludes civil twilight
+    half_daylight_0 = datetime.timedelta(hours=omega(sunset_deg))
+    out['sunrise'] = dt_transit - half_daylight_0
+    out['sunset'] = dt_transit + half_daylight_0
+
+    # Includes civil twilight
+    half_daylight_1 = datetime.timedelta(hours=omega(civil_twilight_deg))
+    out['dawn'] = dt_transit - half_daylight_1
+    out['dusk'] = dt_transit + half_daylight_1
+    
+    return out
     
 def main():
-    dt = datetime.datetime(2020, 12, 31, 12, tzinfo=us_central())
-    print(solar_elevation(32.5, -85.5, dt))
+    dt = datetime.datetime(2021, 6, 30, 12, tzinfo=central_time)
+    lat, lon = 32.5, -85.5
+    wiki = wikipedia_formula(lat, lon, dt)
+    for k, v in wiki.items():
+        print(f'{k:8s}: {v}')
     
 if __name__ == '__main__':
     main()
