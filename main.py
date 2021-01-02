@@ -114,4 +114,4 @@ def main():
         print(f'{k:8s}: {v.strftime(r"%H:%M:%S")}')
         
 if __name__ == '__main__':
-    bottle.run(host='localhost', port=8510, debug=True)
+    bottle.run(host='0.0.0.0', port=8510, debug=True)
