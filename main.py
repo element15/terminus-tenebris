@@ -12,11 +12,11 @@ import bottle
 STYLE = '''\
 <style type = text/css>
 body {
-  font-family: "SF Mono", "Monaco";
-  font-size: 30pt;
-  padding-top: 24pt;
+  font-family: "Menlo", "Monaco";
+  font-size: 80pt;
+  padding-top: 60pt;
   background-color: #333;
-  color: #eee;
+  color: #fff;
 }
 </style>
 '''
