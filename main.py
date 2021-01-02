@@ -26,10 +26,6 @@ LEAP_SECONDS = datetime.timedelta(seconds=5)
 TIME_EPOCH = datetime.datetime(
     2000, 1, 1, hour=12, tzinfo=datetime.timezone.utc)
 
-UTC_OFFSET = datetime.timedelta(hours=-6)
-DST_OFFSET = datetime.timedelta(hours=1)
-ZERO_OFFSET = datetime.timedelta(0)
-
 deg_func = lambda f : lambda x : f(radians(x))
 sind, cosd, tand = map(deg_func, (sin, cos, tan))
 
@@ -37,13 +33,62 @@ deg_afunc = lambda f : lambda x : degrees(f(x))
 asind, acosd, atand = map(deg_afunc, (asin, acos, atan))
 atan2d = lambda x, y : degrees(atan2(x, y))
 
-class us_central(datetime.tzinfo):
+DST_OFFSET = datetime.timedelta(hours=1)
+ZERO_OFFSET = datetime.timedelta(0)
+all_tz = {
+    'eastern': {
+        'offset': datetime.timedelta(hours=-5),
+        'std_name': 'EST',
+        'dst_name': 'EDT'},
+    'central': {
+        'offset': datetime.timedelta(hours=-6),
+        'std_name': 'CST',
+        'dst_name': 'CDT'},
+    'mountain': {
+        'offset': datetime.timedelta(hours=-7),
+        'std_name': 'MST',
+        'dst_name': 'MDT'},
+    'pacific': {
+        'offset': datetime.timedelta(hours=-8),
+        'std_name': 'PST',
+        'dst_name': 'PDT'},
+    'alaska': {
+        'offset': datetime.timedelta(hours=-9),
+        'std_name': 'AKST',
+        'dst_name': 'AKDT'},
+    'hawaii': {
+        'offset': datetime.timedelta(hours=-10),
+        'std_name': 'HST',
+        'dst_name': 'HDT'}}
+
+class us_tz(datetime.tzinfo):
+    """A timezone which obeys US DST rules."""
+    def __init__(self, name, dst_override=None):
+        super().__init__()
+        try:
+            data = all_tz[name]
+            self._dst_override = dst_override
+            self._utc_offset = data['offset']
+            self._std_name = data['std_name']
+            self._dst_name = data['dst_name']
+        except KeyError:
+            self._dst_override = False
+            try:
+                # Interpret `name` as a raw UTC offset
+                raw_offset = float(name)
+                self._utc_offset = datetime.timedelta(hours=raw_offset)
+                self._std_name = self._dst_name = name
+            except (ValueError, TypeError):
+                # Default to UTC
+                self._utc_offset = ZERO_OFFSET
+                self._std_name = self._dst_name = 'UTC'
+    
     def utcoffset(self, dt):
-        return UTC_OFFSET + self.dst(dt)
+        return self._utc_offset + self.dst(dt)
     def dst(self, dt):
         return DST_OFFSET if self._is_dst(dt) else ZERO_OFFSET
     def tzname(self, dt):
-        return 'CDT' if self._is_dst(dt) else 'CST'
+        return self._dst_name if self._is_dst(dt) else self._std_name
 
     def _is_dst(self, dt):
         # Since 2007 in the United States, DST has run from the second Sunday
@@ -51,6 +96,8 @@ class us_central(datetime.tzinfo):
         # at 02:00 local time, but this function assumes that the entire day
         # is in the new time offset (effectively placing the transition at
         # midnight instead).
+        if self._dst_override is not None:
+            return self._dst_override
         if dt.month in (4, 5, 6, 7, 8, 9, 10):
             return True
         if dt.month in (1, 2, 12):
@@ -61,7 +108,7 @@ class us_central(datetime.tzinfo):
             return last_sunday > 7 # Second Sunday or later
         # DST ends in November
         return last_sunday > 0 # First Sunday or later
-central_time = us_central()
+central_time = us_tz('central')
     
 def sun_times(latitude_deg, longitude_deg, dt):
     """Calculate sunrise/sunset parameters.
@@ -110,8 +157,10 @@ def sun_times(latitude_deg, longitude_deg, dt):
     return out
 
 @bottle.route('/tenebris/<lat:float>/<lon:float>')
-def index(lat, lon):
-    dt = datetime.datetime.now(tz=central_time)
+@bottle.route('/tenebris/<lat:float>/<lon:float>/<tz>')
+@bottle.route('/tenebris/<lat:float>/<lon:float>/<tz>/<dst:int>')
+def index(lat, lon, tz=None, dst=None):
+    dt = datetime.datetime.now(tz=us_tz(tz, dst_override=bool(dst)))
     times = sun_times(lat, lon, dt)
     times_fmt = {k: v.strftime(r'%H:%M:%S') for k, v in times.items()}
     return f'''\
