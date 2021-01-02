@@ -9,6 +9,18 @@ from math import (
 
 import bottle
 
+STYLE = '''\
+<style type = text/css>
+body {
+  font-family: "Monaco";
+  font-size: 16pt;
+  padding-top: 16pt;
+  background-color: #333
+  color: #eee;
+}
+</style>
+'''
+
 # Number of leap seconds since 2000-01-01 as of 2021-01-01
 LEAP_SECONDS = datetime.timedelta(seconds=5)
 TIME_EPOCH = datetime.datetime(
@@ -102,16 +114,22 @@ def index(lat, lon):
     dt = datetime.datetime.now(tz=central_time)
     times = sun_times(lat, lon, dt)
     times_fmt = {k: v.strftime(r'%H:%M:%S') for k, v in times.items()}
-    return (
-        f'Dawn: <b>{times_fmt["dawn"]}</b><br />'
-        f'Dusk: <b>{times_fmt["dusk"]}</b>')
+    return f'''\
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Terminus Tenebris</title>
+    {STYLE}
+  </head>
+  <body>
+    <center>
+      Dawn: <b>{times_fmt["dawn"]}</b><br />
+      Dusk: <b>{times_fmt["dusk"]}</b>
+    </center>
+  </body>
+</html>
+'''
 
-def main():
-    dt = datetime.datetime.now(tz=central_time)
-    lat, lon = 32.5, -85.5
-    wiki = sun_times(lat, lon, dt)
-    for k, v in wiki.items():
-        print(f'{k:8s}: {v.strftime(r"%H:%M:%S")}')
-        
 if __name__ == '__main__':
     bottle.run(host='0.0.0.0', port=8510, debug=True)
