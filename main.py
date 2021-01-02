@@ -7,6 +7,8 @@ from math import (
     asin, acos, atan, atan2,
     radians, degrees)
 
+import bottle
+
 # Number of leap seconds since 2000-01-01 as of 2021-01-01
 LEAP_SECONDS = datetime.timedelta(seconds=5)
 TIME_EPOCH = datetime.datetime(
@@ -49,7 +51,7 @@ class us_central(datetime.tzinfo):
         return last_sunday > 0 # First Sunday or later
 central_time = us_central()
     
-def wikipedia_formula(latitude_deg, longitude_deg, dt):
+def sun_times(latitude_deg, longitude_deg, dt):
     """Calculate sunrise/sunset parameters.
 
     These equations were adapted from Wikipedia:
@@ -94,13 +96,22 @@ def wikipedia_formula(latitude_deg, longitude_deg, dt):
     out['dusk'] = dt_transit + half_daylight_1
     
     return out
-    
+
+@bottle.route('/tenebris/<lat:float>/<lon:float>')
+def index(lat, lon):
+    dt = datetime.datetime.now(tz=central_time)
+    times = sun_times(lat, lon, dt)
+    times_fmt = {k: v.strftime(r'%H:%M:%S') for k, v in times.items()}
+    return (
+        f'Dawn: <b>{times_fmt["dawn"]}</b><br />'
+        f'Dusk: <b>{times_fmt["dusk"]}</b>')
+
 def main():
-    dt = datetime.datetime(2021, 6, 30, 12, tzinfo=central_time)
+    dt = datetime.datetime.now(tz=central_time)
     lat, lon = 32.5, -85.5
-    wiki = wikipedia_formula(lat, lon, dt)
+    wiki = sun_times(lat, lon, dt)
     for k, v in wiki.items():
-        print(f'{k:8s}: {v}')
-    
+        print(f'{k:8s}: {v.strftime(r"%H:%M:%S")}')
+        
 if __name__ == '__main__':
-    main()
+    bottle.run(host='localhost', port=8510, debug=True)
