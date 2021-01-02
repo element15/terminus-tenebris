@@ -14,7 +14,7 @@ STYLE = '''\
 body {
   font-family: "Menlo", "Monaco";
   font-size: 80pt;
-  padding-top: 60pt;
+  padding-top: 80pt;
   background-color: #333;
   color: #fff;
 }
