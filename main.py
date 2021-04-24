@@ -160,7 +160,8 @@ def sun_times(latitude_deg, longitude_deg, dt):
 @bottle.route('/tenebris/<lat:float>/<lon:float>/<tz>')
 @bottle.route('/tenebris/<lat:float>/<lon:float>/<tz>/<dst:int>')
 def index(lat, lon, tz=None, dst=None):
-    dt = datetime.datetime.now(tz=us_tz(tz, dst_override=bool(dst)))
+    dst_override = None if dst is None else bool(dst)
+    dt = datetime.datetime.now(tz=us_tz(tz, dst_override=dst_override))
     times = sun_times(lat, lon, dt)
     times_fmt = {k: v.strftime(r'%H:%M:%S') for k, v in times.items()}
     return f'''\
