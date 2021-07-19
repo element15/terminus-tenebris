@@ -82,7 +82,7 @@ class us_tz(datetime.tzinfo):
                 # Default to UTC
                 self._utc_offset = ZERO_OFFSET
                 self._std_name = self._dst_name = 'UTC'
-    
+
     def utcoffset(self, dt):
         return self._utc_offset + self.dst(dt)
     def dst(self, dt):
@@ -109,7 +109,7 @@ class us_tz(datetime.tzinfo):
         # DST ends in November
         return last_sunday > 0 # First Sunday or later
 central_time = us_tz('central')
-    
+
 def sun_times(latitude_deg, longitude_deg, dt):
     """Calculate sunrise/sunset parameters.
 
@@ -136,7 +136,7 @@ def sun_times(latitude_deg, longitude_deg, dt):
         /(cosd(latitude_deg)*cosd(delta))) / 15.0
     sunset_deg = -0.83
     civil_twilight_deg = -6.0
-    
+
     # Solar noon
     n_transit = int(n) - longitude_deg/360.0 - eq_of_time_day
     dt_transit = (
@@ -153,15 +153,37 @@ def sun_times(latitude_deg, longitude_deg, dt):
     half_daylight_1 = datetime.timedelta(hours=omega(civil_twilight_deg))
     out['dawn'] = dt_transit - half_daylight_1
     out['dusk'] = dt_transit + half_daylight_1
-    
+
     return out
 
 @bottle.route('/tenebris/<lat:float>/<lon:float>')
 @bottle.route('/tenebris/<lat:float>/<lon:float>/<tz>')
+@bottle.route('/tenebris/<lat:float>/<lon:float>/<tz>/at/<at>')
 @bottle.route('/tenebris/<lat:float>/<lon:float>/<tz>/<dst:int>')
-def index(lat, lon, tz=None, dst=None):
+def index(lat, lon, tz=None, dst=None, at=None):
     dst_override = None if dst is None else bool(dst)
-    dt = datetime.datetime.now(tz=us_tz(tz, dst_override=dst_override))
+    if at is None:
+        dt = datetime.datetime.now(tz=us_tz(tz, dst_override=dst_override))
+    else:
+        try:
+            dt = datetime.datetime.strptime(at, '%Y-%m-%d')
+            dt.tzinfo = us_tz(tz, dst_override=dst_override)
+        except ValueError:
+            return '''\
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Terminus Tenebris</title>
+    {STYLE}
+  </head>
+  <body>
+    <center>
+      Invalid date specification
+    </center>
+  </body>
+</html>
+'''
     times = sun_times(lat, lon, dt)
     times_fmt = {k: v.strftime(r'%H:%M:%S') for k, v in times.items()}
     return f'''\
