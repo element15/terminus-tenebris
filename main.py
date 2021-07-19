@@ -167,7 +167,7 @@ def index(lat, lon, tz=None, dst=None, at=None):
     else:
         try:
             dt = datetime.datetime.strptime(at, '%Y-%m-%d')
-            dt.tzinfo = us_tz(tz, dst_override=dst_override)
+            dt.replace(tzinfo=us_tz(tz, dst_override=dst_override))
         except ValueError:
             return '''\
 <!DOCTYPE html>
